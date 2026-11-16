@@ -21,7 +21,7 @@ const CATEGORIES: ExpenseCategory[] = [
 const METHODS: PaymentMethod[] = ['Bank Transfer', 'UPI', 'Cash', 'Card', 'Other'];
 
 export function ExpensesView() {
-  const { db, addExpense, updateExpense, deleteExpense } = useTourism();
+  const { db, canDelete, addExpense, updateExpense, deleteExpense } = useTourism();
   const { currency, dateFormat } = db.settings;
 
   const [search, setSearch] = useState('');
@@ -319,14 +319,16 @@ export function ExpensesView() {
                         >
                           <Edit2 className="h-4 w-4" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingExpense(e)}
-                          title="Delete Expense"
-                          className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/60"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => setDeletingExpense(e)}
+                            title="Delete Expense"
+                            className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/60"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

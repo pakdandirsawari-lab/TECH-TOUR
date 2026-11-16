@@ -30,7 +30,17 @@ import { DestinationImage, StatusLabel } from '../ui/CommonUI';
 const PIE_COLORS = ['#1D4ED8', '#0284C7', '#0D9488', '#D97706', '#4F46E5', '#E11D48', '#7C3AED', '#059669'];
 
 export function DashboardView() {
-  const { db, financialSummary, getPaidForBooking, setActiveRoute, navigateToRecord } = useTourism();
+  const {
+    db,
+    isAdmin,
+    cloudStatus,
+    syncStatus,
+    localScan,
+    financialSummary,
+    getPaidForBooking,
+    setActiveRoute,
+    navigateToRecord,
+  } = useTourism();
   const { currency, dateFormat } = db.settings;
 
   // Dynamic monthly revenue (payments received) vs expenses
@@ -158,22 +168,44 @@ export function DashboardView() {
     },
   ];
 
-  const hasDemoRecords = db.bookings.some((b) => b.isDemo) || db.customers.some((c) => c.isDemo);
+  const needsCloudSetup = syncStatus === 'unconfigured' || (cloudStatus !== null && !cloudStatus.configured);
+  const hasPendingLocalMigration = isAdmin && (localScan?.totalRecords ?? 0) > 0;
 
   return (
     <div className="space-y-6">
-      {/* Honest Local Storage & Demo Data Indicator */}
-      {hasDemoRecords && (
+      {/* Google Sheets Cloud Setup / Migration Notice */}
+      {needsCloudSetup && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          <p>
+            <span className="font-semibold">Google Sheets Central DB Not Connected:</span>{' '}
+            {isAdmin
+              ? 'Deploy Code.gs and connect your Google Apps Script Web App URL in Settings to enable real-time multi-user cloud storage.'
+              : 'Ask your Administrator to connect the Google Sheets Web App URL in Settings.'}
+          </p>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setActiveRoute('settings')}
+              className="font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-950 dark:text-amber-300"
+            >
+              Connect Google Sheets
+            </button>
+          )}
+        </div>
+      )}
+
+      {!needsCloudSetup && hasPendingLocalMigration && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
           <p>
-            <span className="font-semibold">Demo Dataset Active:</span> Sample Indian travel agency records are loaded in local browser storage so you can explore immediately. Add your own bookings or clear demo data anytime in Settings.
+            <span className="font-semibold">Local Browser Records Detected:</span> Found{' '}
+            <strong>{localScan?.totalRecords}</strong> existing local record(s) in browser storage ready to migrate safely to Google Sheets.
           </p>
           <button
             type="button"
             onClick={() => setActiveRoute('settings')}
             className="font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900 dark:text-blue-300"
           >
-            Manage Data
+            Review & Migrate
           </button>
         </div>
       )}

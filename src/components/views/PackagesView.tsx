@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarPlus, Check, Edit2, Eye, Package, Plus, Search, Trash2, Upload, X } from 'lucide-react';
 import { useTourism } from '../../context/TourismContext';
-import { DESTINATION_GALLERY } from '../../data/demoData';
+import { DESTINATION_GALLERY } from '../../data/emptyDatabase';
 import { PackageStatus, TourPackage } from '../../types/tourism';
 import { formatCurrency } from '../../utils/formatters';
 import { ConfirmDialog, DestinationImage, EmptyState, Modal, StatusLabel } from '../ui/CommonUI';
@@ -11,6 +11,7 @@ const STATUSES: PackageStatus[] = ['Active', 'Seasonal', 'Inactive'];
 export function PackagesView() {
   const {
     db,
+    canDelete,
     focusedRecordId,
     setFocusedRecordId,
     navigateToRecord,
@@ -292,14 +293,16 @@ export function PackagesView() {
                     >
                       <Edit2 className="h-4 w-4" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeletingPkg(pkg)}
-                      title="Delete Package"
-                      className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-red-950/60"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => setDeletingPkg(pkg)}
+                        title="Delete Package"
+                        className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-red-950/60"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

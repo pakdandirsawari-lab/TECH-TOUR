@@ -10,6 +10,7 @@ const METHODS: PaymentMethod[] = ['UPI', 'Bank Transfer', 'Cash', 'Card', 'Other
 export function PaymentsView() {
   const {
     db,
+    canDelete,
     focusedRecordId,
     setFocusedRecordId,
     getPaidForBooking,
@@ -281,14 +282,16 @@ export function PaymentsView() {
                         >
                           <Edit2 className="h-4 w-4" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingPayment(p)}
-                          title="Delete Payment"
-                          className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/60"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => setDeletingPayment(p)}
+                            title="Delete Payment"
+                            className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/60"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

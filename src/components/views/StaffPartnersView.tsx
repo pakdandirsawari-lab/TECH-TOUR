@@ -28,6 +28,7 @@ const PAY_METHODS: PaymentMethod[] = ['Bank Transfer', 'UPI', 'Cash', 'Card', 'O
 export function StaffPartnersView() {
   const {
     db,
+    isAdmin,
     addStaff,
     updateStaff,
     deleteStaff,
@@ -312,14 +313,16 @@ export function StaffPartnersView() {
             </select>
           )}
 
-          <button
-            type="button"
-            onClick={activeTab === 'staff' ? openAddStaff : openAddPartner}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 whitespace-nowrap"
-          >
-            <Plus className="h-4 w-4" />
-            {activeTab === 'staff' ? 'Add Staff' : 'Add Partner'}
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={activeTab === 'staff' ? openAddStaff : openAddPartner}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 whitespace-nowrap"
+            >
+              <Plus className="h-4 w-4" />
+              {activeTab === 'staff' ? 'Add Staff' : 'Add Partner'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -373,15 +376,17 @@ export function StaffPartnersView() {
                         </td>
                         <td className="px-4 py-3.5 text-right">
                           <div className="inline-flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => openSalaryModal(s)}
-                              title="Record Salary Payout"
-                              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
-                            >
-                              <IndianRupee className="h-3 w-3" />
-                              Pay
-                            </button>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => openSalaryModal(s)}
+                                title="Record Salary Payout"
+                                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                              >
+                                <IndianRupee className="h-3 w-3" />
+                                Pay
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => setViewingStaff(s)}
@@ -390,22 +395,26 @@ export function StaffPartnersView() {
                             >
                               <Eye className="h-4 w-4" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => openEditStaff(s)}
-                              title="Edit Staff"
-                              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800"
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeletingStaff(s)}
-                              title="Delete Staff"
-                              className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/60"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {isAdmin && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditStaff(s)}
+                                  title="Edit Staff"
+                                  className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800"
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeletingStaff(s)}
+                                  title="Delete Staff"
+                                  className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/60"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -460,22 +469,24 @@ export function StaffPartnersView() {
                   </div>
                   <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-800">
                     <span className="font-mono text-xs text-slate-400">{p.id}</span>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => openEditPartner(p)}
-                        className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeletingPartner(p)}
-                        className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/60"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                    {isAdmin && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEditPartner(p)}
+                          className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeletingPartner(p)}
+                          className="rounded-md p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/60"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

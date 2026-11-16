@@ -30,6 +30,10 @@ export type PackageStatus = 'Active' | 'Seasonal' | 'Inactive';
 
 export type DateFormatOption = 'DD-MM-YYYY' | 'MM-DD-YYYY' | 'YYYY-MM-DD';
 
+export type UserRole = 'admin' | 'staff';
+
+export type CloudSyncStatus = 'idle' | 'connecting' | 'syncing' | 'synced' | 'error' | 'unconfigured';
+
 export type AppRoute =
   | 'dashboard'
   | 'bookings'
@@ -160,13 +164,23 @@ export interface Partner {
   isDemo?: boolean;
 }
 
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  status: 'Active' | 'Inactive';
+  avatar: string;
+  createdAt?: string;
+}
+
 export interface UserAccount {
   id: string;
   name: string;
   email: string;
   role: string;
   avatar: string;
-  password: string;
+  password?: string;
 }
 
 export interface AgencySettings {
@@ -193,4 +207,33 @@ export interface TourismDatabase {
   staff: StaffMember[];
   partners: Partner[];
   settings: AgencySettings;
+}
+
+export interface LocalStorageScanResult {
+  sourcesFound: string[];
+  storageKeys: string[];
+  indexedDbNames: string[];
+  counts: {
+    customers: number;
+    packages: number;
+    bookings: number;
+    payments: number;
+    expenses: number;
+    staff: number;
+    partners: number;
+  };
+  totalRecords: number;
+  demoRecordsSkipped: number;
+  data: TourismDatabase;
+}
+
+export interface CloudStatusInfo {
+  configured: boolean;
+  spreadsheetId: string;
+  webAppUrlPreview: string;
+  hasApiSecret: boolean;
+  connected: boolean;
+  version: number;
+  updatedAt: string | null;
+  error?: string;
 }

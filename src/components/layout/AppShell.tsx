@@ -1,32 +1,43 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   BarChart3,
   Bell,
   CalendarCheck,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Cloud,
   Compass,
   CreditCard,
-  Database,
   FileSpreadsheet,
   LayoutDashboard,
-  Lock,
+  Loader2,
+  LogOut,
   Menu,
   Package,
   Receipt,
+  RefreshCw,
   Search,
   Settings,
+  ShieldCheck,
   Users,
   UserCheck,
   X,
 } from 'lucide-react';
 import { useTourism } from '../../context/TourismContext';
+import { fetchAuthMe } from '../../services/cloudSheetsApi';
 import { AppRoute } from '../../types/tourism';
 import { formatCurrency, formatDate, getTodayISO } from '../../utils/formatters';
 import { GoogleSheetsBackupPanel } from '../backup/GoogleSheetsBackupPanel';
 import { Modal } from '../ui/CommonUI';
 
-const NAV_ITEMS: { id: AppRoute; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+const NAV_ITEMS: {
+  id: AppRoute;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  adminOnly?: boolean;
+}[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'bookings', label: 'Bookings', icon: CalendarCheck },
   { id: 'customers', label: 'Customers', icon: Users },
@@ -35,7 +46,7 @@ const NAV_ITEMS: { id: AppRoute; label: string; icon: React.ComponentType<{ clas
   { id: 'packages', label: 'Packages', icon: Package },
   { id: 'staff', label: 'Staff & Partners', icon: UserCheck },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'settings', label: 'Settings', icon: Settings, adminOnly: true },
 ];
 
 const ROUTE_TITLES: Record<AppRoute, string> = {
@@ -47,18 +58,37 @@ const ROUTE_TITLES: Record<AppRoute, string> = {
   packages: 'Tour Packages',
   staff: 'Staff & Partners',
   reports: 'Reports & Analytics',
-  settings: 'Agency Settings',
+  settings: 'Agency & Cloud Settings',
 };
 
 export function LockScreen() {
-  const { db, unlockApp } = useTourism();
+  const { db, signIn } = useTourism();
+  const [email, setEmail] = useState('admin@himalayanhorizons.in');
   const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [cloudConfigured, setCloudConfigured] = useState<boolean | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    void fetchAuthMe()
+      .then((res) => setCloudConfigured(res.cloudConfigured))
+      .catch(() => setCloudConfigured(false));
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!unlockApp(password)) {
-      setError('Incorrect password. Default demo password is "admin123" unless changed in Settings.');
+    if (!email.trim() || !password) {
+      setError('Please enter both email and password.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      await signIn(email.trim(), password);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign-in failed. Please verify your credentials.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -71,31 +101,46 @@ export function LockScreen() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-slate-900 dark:text-white">{db.settings.agencyName}</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Tourism Management Console</p>
-          </div>
-        </div>
-
-        <div className="mt-6 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/60">
-          <img
-            src={db.settings.userProfile.avatar}
-            alt={db.settings.userProfile.name}
-            referrerPolicy="no-referrer"
-            className="h-11 w-11 rounded-lg object-cover"
-          />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-              {db.settings.userProfile.name}
-            </p>
-            <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-              {db.settings.userProfile.role} · {db.settings.userProfile.email}
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Google Sheets Shared Cloud Console
             </p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300">
+          <div className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
+            <ShieldCheck className="h-4 w-4 text-blue-600" />
+            <span>Authorized Staff & Admin Access Only</span>
+          </div>
+          <p className="mt-1 leading-relaxed text-slate-500 dark:text-slate-400">
+            {cloudConfigured === false
+              ? 'First-time setup: sign in with the bootstrap Admin email (admin@himalayanhorizons.in) to connect Google Sheets and migrate local data.'
+              : 'Sign in with your agency Admin or Staff account managed in Google Sheets.'}
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-              Administrator Password
+              Work Email
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setError('');
+              }}
+              placeholder="admin@himalayanhorizons.in"
+              required
+              autoComplete="email"
+              className="mt-1.5 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-600 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Password
             </label>
             <input
               type="password"
@@ -104,17 +149,27 @@ export function LockScreen() {
                 setPassword(e.target.value);
                 setError('');
               }}
-              placeholder="Enter password (demo: admin123)"
+              placeholder="Enter your password"
+              required
+              autoComplete="current-password"
               className="mt-1.5 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-600 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               autoFocus
             />
-            {error && <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">{error}</p>}
           </div>
+
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">
+              {error}
+            </div>
+          )}
+
           <button
             type="submit"
-            className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+            disabled={submitting}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
           >
-            Sign In to Workspace
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {submitting ? 'Signing In...' : 'Sign In to Workspace'}
           </button>
         </form>
       </div>
@@ -123,14 +178,27 @@ export function LockScreen() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { db, activeRoute, setActiveRoute, navigateToRecord, getRemainingForBooking, lockApp } = useTourism();
+  const {
+    db,
+    activeRoute,
+    setActiveRoute,
+    navigateToRecord,
+    getRemainingForBooking,
+    currentUser,
+    isAdmin,
+    signOut,
+    syncStatus,
+    lastSyncedAt,
+    refreshFromCloud,
+    localScan,
+  } = useTourism();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [sheetsBackupOpen, setSheetsBackupOpen] = useState(false);
+  const [cloudModalOpen, setCloudModalOpen] = useState(false);
 
   const searchRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -308,7 +376,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Navigation Links */}
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin).map((item) => {
             const Icon = item.icon;
             const active = activeRoute === item.id;
             return (
@@ -330,39 +398,53 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Bottom Storage Status & Collapse */}
+        {/* Bottom Google Sheets Cloud Status & Sign Out */}
         <div className="border-t border-white/10 p-3 space-y-2">
           {!sidebarCollapsed && (
             <div className="rounded-lg bg-white/5 px-3 py-2.5 text-xs text-slate-300">
               <div className="flex items-center gap-2 font-medium text-white">
-                <Database className="h-3.5 w-3.5 text-sky-400 shrink-0" />
-                <span>Local Browser Storage</span>
+                <Cloud className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                <span>Google Sheets Cloud</span>
               </div>
               <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-                Back up anytime to Google Sheets or JSON in Settings.
+                {syncStatus === 'synced'
+                  ? `Shared DB synced every 4s${lastSyncedAt ? ` (${lastSyncedAt})` : ''}.`
+                  : syncStatus === 'unconfigured'
+                    ? 'Connect Web App URL in Settings.'
+                    : syncStatus === 'error'
+                      ? 'Sync paused — check connection.'
+                      : 'Synchronizing shared sheet...'}
               </p>
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={() => setSheetsBackupOpen(true)}
-            title="Backup to Google Sheets"
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600/90 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" />
-            {!sidebarCollapsed && <span>Backup to Sheets</span>}
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setCloudModalOpen(true)}
+              title="Google Sheets Cloud Setup & Migration"
+              className="relative flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600/90 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" />
+              {!sidebarCollapsed && (
+                <span>
+                  {localScan && localScan.totalRecords > 0
+                    ? `Sheets Setup (${localScan.totalRecords} local)`
+                    : 'Google Sheets Setup'}
+                </span>
+              )}
+            </button>
+          )}
 
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
-              onClick={lockApp}
-              title="Lock Workspace"
+              onClick={() => void signOut()}
+              title="Sign Out"
               className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
             >
-              <Lock className="h-3.5 w-3.5 shrink-0" />
-              {!sidebarCollapsed && <span>Lock Screen</span>}
+              <LogOut className="h-3.5 w-3.5 shrink-0" />
+              {!sidebarCollapsed && <span>Sign Out</span>}
             </button>
 
             <button
@@ -444,8 +526,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </div>
 
-          {/* Right Header Controls: Current Date, Notifications, User Profile */}
-          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          {/* Right Header Controls: Cloud Sync Status, Date, Notifications, User Profile */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => void refreshFromCloud(false)}
+              title={lastSyncedAt ? `Last synced at ${lastSyncedAt}. Click to refresh now.` : 'Refresh from Google Sheets'}
+              className={`hidden sm:inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                syncStatus === 'synced'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
+                  : syncStatus === 'error'
+                    ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
+                    : syncStatus === 'unconfigured'
+                      ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300'
+                      : 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300'
+              }`}
+            >
+              {syncStatus === 'syncing' || syncStatus === 'connecting' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : syncStatus === 'synced' ? (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              ) : syncStatus === 'error' || syncStatus === 'unconfigured' ? (
+                <AlertCircle className="h-3.5 w-3.5" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              <span>
+                {syncStatus === 'syncing' || syncStatus === 'connecting'
+                  ? 'Syncing...'
+                  : syncStatus === 'synced'
+                    ? 'Sheets Synced'
+                    : syncStatus === 'unconfigured'
+                      ? 'Setup Sheets'
+                      : syncStatus === 'error'
+                        ? 'Sync Error'
+                        : 'Refresh'}
+              </span>
+            </button>
+
             <div className="hidden xl:flex items-center gap-1.5 text-xs font-mono font-medium text-slate-500 dark:text-slate-400">
               <span>Date:</span>
               <span className="text-slate-800 dark:text-slate-200">{todayFormatted}</span>
@@ -529,36 +647,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
 
               {profileOpen && (
-                <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                <div className="absolute right-0 mt-2 w-60 rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
                   <div className="border-b border-slate-100 px-4 py-2 dark:border-slate-800">
-                    <p className="truncate text-xs font-semibold text-slate-900 dark:text-white">
-                      {db.settings.userProfile.name}
-                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-xs font-semibold text-slate-900 dark:text-white">
+                        {currentUser?.name || db.settings.userProfile.name}
+                      </p>
+                      <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                        {currentUser?.role || 'staff'}
+                      </span>
+                    </div>
                     <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-                      {db.settings.userProfile.email}
+                      {currentUser?.email || db.settings.userProfile.email}
                     </p>
                   </div>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveRoute('settings');
+                        setProfileOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                      Cloud & Agency Settings
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveRoute('settings');
                       setProfileOpen(false);
+                      void signOut();
                     }}
                     className="flex w-full items-center gap-2 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
                   >
-                    <Settings className="h-3.5 w-3.5" />
-                    Profile & Agency Settings
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProfileOpen(false);
-                      lockApp();
-                    }}
-                    className="flex w-full items-center gap-2 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
-                  >
-                    <Lock className="h-3.5 w-3.5" />
-                    Lock Screen
+                    <LogOut className="h-3.5 w-3.5" />
+                    Sign Out
                   </button>
                 </div>
               )}
@@ -570,15 +695,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 p-4 sm:p-6">{children}</main>
       </div>
 
-      <Modal
-        open={sheetsBackupOpen}
-        onClose={() => setSheetsBackupOpen(false)}
-        title="Backup Agency Data to Google Sheets"
-        subtitle="Connect your Google account and push all current records to your spreadsheet."
-        maxWidth="max-w-2xl"
-      >
-        <GoogleSheetsBackupPanel />
-      </Modal>
+      {isAdmin && (
+        <Modal
+          open={cloudModalOpen}
+          onClose={() => setCloudModalOpen(false)}
+          title="Google Sheets Central Database Setup"
+          subtitle="Connect your Google Apps Script Web App backend, migrate local records, and manage Admin/Staff access."
+          maxWidth="max-w-3xl"
+        >
+          <GoogleSheetsBackupPanel />
+        </Modal>
+      )}
     </div>
   );
 }

@@ -13,9 +13,20 @@ import { StaffPartnersView } from './components/views/StaffPartnersView';
 import { TourismProvider, useTourism } from './context/TourismContext';
 
 function WorkspaceRouter() {
-  const { activeRoute, isLocked, toasts, dismissToast } = useTourism();
+  const { activeRoute, currentUser, isAuthChecking, isAdmin, toasts, dismissToast } = useTourism();
 
-  if (isLocked) {
+  if (isAuthChecking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0B1739] p-4">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="h-9 w-9 animate-spin rounded-full border-3 border-blue-400 border-t-transparent" />
+          <p className="text-sm font-medium text-slate-200">Verifying workspace session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
     return (
       <>
         <LockScreen />
@@ -24,18 +35,20 @@ function WorkspaceRouter() {
     );
   }
 
+  const resolvedRoute = !isAdmin && activeRoute === 'settings' ? 'dashboard' : activeRoute;
+
   return (
     <>
       <AppShell>
-        {activeRoute === 'dashboard' && <DashboardView />}
-        {activeRoute === 'bookings' && <BookingsView />}
-        {activeRoute === 'customers' && <CustomersView />}
-        {activeRoute === 'payments' && <PaymentsView />}
-        {activeRoute === 'expenses' && <ExpensesView />}
-        {activeRoute === 'packages' && <PackagesView />}
-        {activeRoute === 'staff' && <StaffPartnersView />}
-        {activeRoute === 'reports' && <ReportsView />}
-        {activeRoute === 'settings' && <SettingsView />}
+        {resolvedRoute === 'dashboard' && <DashboardView />}
+        {resolvedRoute === 'bookings' && <BookingsView />}
+        {resolvedRoute === 'customers' && <CustomersView />}
+        {resolvedRoute === 'payments' && <PaymentsView />}
+        {resolvedRoute === 'expenses' && <ExpensesView />}
+        {resolvedRoute === 'packages' && <PackagesView />}
+        {resolvedRoute === 'staff' && <StaffPartnersView />}
+        {resolvedRoute === 'reports' && <ReportsView />}
+        {resolvedRoute === 'settings' && <SettingsView />}
       </AppShell>
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </>
