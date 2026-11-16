@@ -109,3 +109,67 @@ class LocalStorageTourismRepository implements TourismRepository {
 }
 
 export const tourismRepository: TourismRepository = new LocalStorageTourismRepository();
+
+export const CLIENT_INSTANCE_ID =
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `client-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+export interface SharedDatabaseEnvelope {
+  version: number;
+  updatedAt: string;
+  data: TourismDatabase;
+}
+
+export function hasCustomLocalRecords(db: TourismDatabase): boolean {
+  return (
+    db.bookings.some((b) => !b.isDemo) ||
+    db.customers.some((c) => !c.isDemo) ||
+    db.payments.some((p) => !p.isDemo) ||
+    db.expenses.some((e) => !e.isDemo) ||
+    db.packages.some((p) => !p.isDemo) ||
+    db.staff.some((s) => !s.isDemo) ||
+    db.partners.some((p) => !p.isDemo)
+  );
+}
+
+export async function fetchSharedDatabase(): Promise<SharedDatabaseEnvelope | null> {
+  try {
+    const res = await fetch('/api/tourism-db', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const json = (await res.json()) as Partial<SharedDatabaseEnvelope>;
+    if (!json || typeof json.version !== 'number' || !json.data) return null;
+    return {
+      version: json.version,
+      updatedAt: json.updatedAt || new Date().toISOString(),
+      data: json.data,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function pushSharedDatabase(
+  data: TourismDatabase
+): Promise<{ version: number; updatedAt: string } | null> {
+  try {
+    const res = await fetch('/api/tourism-db', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: CLIENT_INSTANCE_ID,
+        data,
+      }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { ok?: boolean; version?: number; updatedAt?: string };
+    if (!json.ok || typeof json.version !== 'number') return null;
+    return {
+      version: json.version,
+      updatedAt: json.updatedAt || new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+

@@ -1,4 +1,4 @@
-import { TourismDatabase } from '../types/tourism';
+import type { TourismDatabase } from '../types/tourism';
 
 export const DESTINATION_GALLERY = [
   {

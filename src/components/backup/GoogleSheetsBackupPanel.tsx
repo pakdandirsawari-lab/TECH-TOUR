@@ -18,6 +18,7 @@ import {
   fetchSpreadsheetMetadataWithGapi,
   GAPI_BACKUP_TABS,
   getGoogleSheetsAccessToken,
+  GoogleAuthPopupError,
   SheetsAuthExpiredError,
   signOutGoogleSheets,
   SpreadsheetMetadata,
@@ -81,6 +82,7 @@ export function GoogleSheetsBackupPanel() {
 
   const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem(WEBHOOK_STORAGE_KEY) || '');
   const [copiedScript, setCopiedScript] = useState(false);
+  const [popupBlockedError, setPopupBlockedError] = useState(false);
 
   useEffect(() => {
     const unsub = subscribeGoogleSheetsAuth((authed) => {
@@ -89,29 +91,38 @@ export function GoogleSheetsBackupPanel() {
     return () => unsub();
   }, []);
 
-  const handleSignIn = async () => {
+  const handleSignIn = () => {
     setIsSigningIn(true);
     setLocalError('');
-    try {
-      const res = await authenticateWithGoogleSheets();
-      setIsAuthenticated(true);
-      showToast('success', 'Authorized Google Sheets access.');
-      setIsCheckingMeta(true);
-      try {
-        const meta = await fetchSpreadsheetMetadataWithGapi(spreadsheetId, res.accessToken);
-        setMetadata(meta);
-      } catch (err) {
-        setLocalError(err instanceof Error ? err.message : 'Unable to read spreadsheet metadata.');
-      } finally {
-        setIsCheckingMeta(false);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Google sign-in failed.';
-      setLocalError(message);
-      showToast('error', message);
-    } finally {
-      setIsSigningIn(false);
-    }
+    setPopupBlockedError(false);
+
+    // Call synchronously in click stack so browser/iframe preserves user-gesture popup activation
+    void authenticateWithGoogleSheets()
+      .then(async (res) => {
+        setIsAuthenticated(true);
+        showToast('success', 'Authorized Google Sheets access.');
+        setIsCheckingMeta(true);
+        try {
+          const meta = await fetchSpreadsheetMetadataWithGapi(spreadsheetId, res.accessToken);
+          setMetadata(meta);
+        } catch (err) {
+          setLocalError(err instanceof Error ? err.message : 'Unable to read spreadsheet metadata.');
+        } finally {
+          setIsCheckingMeta(false);
+        }
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : 'Google sign-in failed.';
+        const isPopupErr =
+          err instanceof GoogleAuthPopupError &&
+          (err.code === 'popup_closed' || err.code === 'popup_failed_to_open');
+        setPopupBlockedError(isPopupErr);
+        setLocalError(message);
+        showToast('error', message);
+      })
+      .finally(() => {
+        setIsSigningIn(false);
+      });
   };
 
   const handleSignOut = async () => {
@@ -381,8 +392,21 @@ export function GoogleSheetsBackupPanel() {
         )}
 
         {displayedError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">
-            {displayedError}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">
+            <span>{displayedError}</span>
+            {popupBlockedError && mode === 'oauth' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('apps_script');
+                  setLocalError('');
+                  setPopupBlockedError(false);
+                }}
+                className="rounded-md bg-red-100 px-2.5 py-1 text-[11px] font-semibold text-red-800 hover:bg-red-200 dark:bg-red-900/60 dark:text-red-200"
+              >
+                Switch to Apps Script Webhook (No Popup)
+              </button>
+            )}
           </div>
         )}
 

@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   clearGoogleSheetsAuthToken,
   DEFAULT_BACKUP_SPREADSHEET_ID,
@@ -9,7 +9,13 @@ import {
   SheetsAuthExpiredError,
 } from '../services/googleSheetsService';
 import { BackupResult, backupViaAppsScriptWebhook } from '../services/sheetsBackup';
-import { tourismRepository } from '../services/storage';
+import {
+  CLIENT_INSTANCE_ID,
+  fetchSharedDatabase,
+  hasCustomLocalRecords,
+  pushSharedDatabase,
+  tourismRepository,
+} from '../services/storage';
 import {
   AgencySettings,
   AppRoute,
@@ -128,10 +134,86 @@ export function TourismProvider({ children }: { children: React.ReactNode }) {
   const [lastSheetsBackup, setLastSheetsBackup] = useState<BackupResult | null>(null);
   const [sheetsSyncError, setSheetsSyncError] = useState<string | null>(null);
 
-  // Persist changes
+  const serverReadyRef = useRef(false);
+  const skipNextServerPushRef = useRef(false);
+  const knownServerVersionRef = useRef(0);
+
+  // Persist local cache & push local edits to shared server for all users
   useEffect(() => {
     tourismRepository.save(db);
+    if (!serverReadyRef.current) return;
+    if (skipNextServerPushRef.current) {
+      skipNextServerPushRef.current = false;
+      return;
+    }
+    void pushSharedDatabase(db).then((res) => {
+      if (res && res.version > knownServerVersionRef.current) {
+        knownServerVersionRef.current = res.version;
+      }
+    });
   }, [db]);
+
+  // Initial sync from shared server + real-time SSE listener across all users/browsers
+  useEffect(() => {
+    let active = true;
+
+    const applyRemoteEnvelope = (envelope: { version: number; data: TourismDatabase }) => {
+      if (!active) return;
+      knownServerVersionRef.current = envelope.version;
+      skipNextServerPushRef.current = true;
+      setDb(envelope.data);
+      tourismRepository.save(envelope.data);
+    };
+
+    void fetchSharedDatabase().then(async (envelope) => {
+      if (!active) return;
+      if (envelope) {
+        knownServerVersionRef.current = envelope.version;
+        const localSnapshot = tourismRepository.load();
+        // If server was freshly seeded (v1) while this browser already had custom records, promote them once
+        if (envelope.version === 1 && hasCustomLocalRecords(localSnapshot)) {
+          const promoted = await pushSharedDatabase(localSnapshot);
+          if (promoted && active) {
+            knownServerVersionRef.current = promoted.version;
+          }
+        } else {
+          applyRemoteEnvelope(envelope);
+        }
+      }
+      serverReadyRef.current = true;
+    });
+
+    const eventSource = new EventSource('/api/tourism-db/events');
+    eventSource.onmessage = (event) => {
+      if (!active) return;
+      try {
+        const msg = JSON.parse(event.data) as {
+          type?: string;
+          version?: number;
+          sourceClientId?: string;
+        };
+        if (
+          msg.type === 'db_updated' &&
+          typeof msg.version === 'number' &&
+          msg.version > knownServerVersionRef.current &&
+          msg.sourceClientId !== CLIENT_INSTANCE_ID
+        ) {
+          void fetchSharedDatabase().then((latest) => {
+            if (latest && latest.version > knownServerVersionRef.current) {
+              applyRemoteEnvelope(latest);
+            }
+          });
+        }
+      } catch {
+        // ignore malformed SSE event
+      }
+    };
+
+    return () => {
+      active = false;
+      eventSource.close();
+    };
+  }, []);
 
   // Sync Tailwind dark mode class with settings.theme
   useEffect(() => {

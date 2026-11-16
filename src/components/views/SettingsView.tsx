@@ -18,7 +18,8 @@ import { useTourism } from '../../context/TourismContext';
 import {
   authenticateWithGoogleSheets,
   DEFAULT_BACKUP_SPREADSHEET_ID,
-  getGoogleSheetsAccessToken,
+  getGoogleSheetsAccessTokenSync,
+  GoogleAuthPopupError,
 } from '../../services/googleSheetsService';
 import { DateFormatOption } from '../../types/tourism';
 import { ConfirmDialog } from '../ui/CommonUI';
@@ -135,32 +136,44 @@ export function SettingsView() {
     e.target.value = '';
   };
 
-  const handleQuickSyncClick = async () => {
+  const [isPopupError, setIsPopupError] = useState(false);
+
+  const handleQuickSyncClick = () => {
     setSheetsStatusFeedback(null);
-    let token = await getGoogleSheetsAccessToken();
-    if (!token) {
-      setIsAuthorizingSheets(true);
-      setSheetsStatusFeedback({
-        type: 'info',
-        message: 'Authorizing with Google Sheets API...',
-      });
-      try {
-        const res = await authenticateWithGoogleSheets();
-        token = res.accessToken;
-      } catch (err) {
+    setIsPopupError(false);
+    const existingToken = getGoogleSheetsAccessTokenSync();
+    if (existingToken) {
+      setConfirmAction('sync_sheets');
+      return;
+    }
+
+    // Call authenticateWithGoogleSheets synchronously inside the click handler (no prior await)
+    // so browser/iframe popup blockers allow the Google OAuth window to open.
+    setIsAuthorizingSheets(true);
+    setSheetsStatusFeedback({
+      type: 'info',
+      message: 'Authorizing with Google Sheets API...',
+    });
+
+    void authenticateWithGoogleSheets()
+      .then((res) => {
+        if (res?.accessToken) {
+          setSheetsStatusFeedback(null);
+          setConfirmAction('sync_sheets');
+        }
+      })
+      .catch((err) => {
         const message = err instanceof Error ? err.message : 'Google authentication failed.';
+        const popupIssue =
+          err instanceof GoogleAuthPopupError &&
+          (err.code === 'popup_closed' || err.code === 'popup_failed_to_open');
+        setIsPopupError(popupIssue);
         setSheetsStatusFeedback({ type: 'error', message });
         showToast('error', message);
+      })
+      .finally(() => {
         setIsAuthorizingSheets(false);
-        return;
-      } finally {
-        setIsAuthorizingSheets(false);
-      }
-    }
-    if (token) {
-      setSheetsStatusFeedback(null);
-      setConfirmAction('sync_sheets');
-    }
+      });
   };
 
   const executeQuickSync = async () => {
@@ -236,9 +249,19 @@ export function SettingsView() {
         {(sheetsStatusFeedback || (sheetsSyncError && !isSheetsBusy) || lastSheetsBackup) && (
           <div className="mt-4">
             {sheetsStatusFeedback?.type === 'error' || (!sheetsStatusFeedback && sheetsSyncError) ? (
-              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{sheetsStatusFeedback?.message || sheetsSyncError}</span>
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{sheetsStatusFeedback?.message || sheetsSyncError}</span>
+                </div>
+                {isPopupError && (
+                  <a
+                    href="#google-sheets-backup-panel"
+                    className="rounded-md bg-red-100 px-2.5 py-1 text-[11px] font-semibold text-red-800 hover:bg-red-200 dark:bg-red-900/60 dark:text-red-200"
+                  >
+                    Use Apps Script Webhook (No Popup)
+                  </a>
+                )}
               </div>
             ) : sheetsStatusFeedback?.type === 'info' ? (
               <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2.5 text-xs font-medium text-blue-700 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-300">
@@ -483,7 +506,9 @@ export function SettingsView() {
       </form>
 
       {/* Google Sheets Backup */}
-      <GoogleSheetsBackupPanel />
+      <div id="google-sheets-backup-panel">
+        <GoogleSheetsBackupPanel />
+      </div>
 
       {/* Storage & Backup Section */}
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-900">
@@ -494,7 +519,7 @@ export function SettingsView() {
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white">Database Storage & Backup</h2>
             <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-              Your agency records are currently stored in <strong>local browser storage (localStorage)</strong> via a modular repository interface. Data is not synced to a remote cloud database. Use JSON export regularly to keep offline backups.
+              Your agency records are automatically synced across all users and browsers via the <strong>shared application server database</strong> (with local browser cache and optional Google Sheets backup). Use JSON export regularly to keep offline backups.
             </p>
           </div>
         </div>

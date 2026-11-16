@@ -507,42 +507,365 @@ export async function exportToGoogleSheets(
   return backupAllDataToSpreadsheet(spreadsheetId, token, db);
 }
 
-export const APPS_SCRIPT_TEMPLATE = `function doGet() {
+export const APPS_SCRIPT_TEMPLATE = `var DEFAULT_SPREADSHEET_ID = '${DEFAULT_BACKUP_SPREADSHEET_ID}';
+
+var TYPE_SHEET_CONFIG = {
+  bookings: {
+    sheetName: 'Bookings',
+    columns: [
+      'id', 'bookingDate', 'customerId', 'customerName', 'customerPhone', 'customerEmail',
+      'destination', 'packageId', 'packageName', 'travelStartDate', 'travelEndDate',
+      'adults', 'children', 'rooms', 'hotelDetails', 'vehicleDetails', 'totalCost', 'status', 'notes'
+    ]
+  },
+  customers: {
+    sheetName: 'Customers',
+    columns: ['id', 'fullName', 'phone', 'whatsapp', 'email', 'address', 'city', 'state', 'createdAt', 'notes']
+  },
+  payments: {
+    sheetName: 'Payments',
+    columns: ['id', 'bookingId', 'customerId', 'customerName', 'paymentDate', 'amount', 'method', 'transactionRef', 'notes']
+  },
+  expenses: {
+    sheetName: 'Expenses',
+    columns: ['id', 'expenseDate', 'category', 'description', 'vendorName', 'relatedBookingId', 'amount', 'paymentMethod', 'notes']
+  },
+  packages: {
+    sheetName: 'Packages',
+    columns: ['id', 'name', 'destination', 'durationDays', 'durationNights', 'pricePerPerson', 'status']
+  },
+  staff: {
+    sheetName: 'Staff',
+    columns: ['id', 'fullName', 'designation', 'phone', 'email', 'joiningDate', 'monthlySalary', 'status']
+  },
+  partners: {
+    sheetName: 'Partners',
+    columns: ['id', 'name', 'type', 'location', 'contactPerson', 'phone', 'email', 'status']
+  }
+};
+
+function jsonResponse_(payload) {
   return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, message: 'Tourism backup webhook is active.' }))
+    .createTextOutput(JSON.stringify(payload))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet() {
+  return jsonResponse_({
+    ok: true,
+    spreadsheetId: DEFAULT_SPREADSHEET_ID,
+    message: 'Tourism webhook is active. Send an HTTP POST with JSON payload.'
+  });
 }
 
 function testAuthorization() {
-  var ss = SpreadsheetApp.openById('${DEFAULT_BACKUP_SPREADSHEET_ID}');
+  var ss = SpreadsheetApp.openById(DEFAULT_SPREADSHEET_ID);
   Logger.log('Authorized access to: ' + ss.getName());
 }
 
-function doPost(e) {
-  if (!e || !e.postData || !e.postData.contents) {
-    return ContentService
-      .createTextOutput(JSON.stringify({
-        ok: false,
-        error: 'Missing postData. Deploy as a Web App (Anyone) or run testAuthorization in the editor instead of Run on doPost.'
-      }))
-      .setMimeType(ContentService.MimeType.JSON);
+function testDoPostSample() {
+  var mockEvent = {
+    postData: {
+      contents: JSON.stringify({
+        spreadsheetId: DEFAULT_SPREADSHEET_ID,
+        type: 'bookings',
+        mode: 'upsert',
+        data: {
+          id: 'TEST-001',
+          bookingDate: '2026-11-16',
+          customerName: 'Sample Guest',
+          destination: 'Darjeeling',
+          totalCost: 15000,
+          status: 'Confirmed'
+        }
+      })
+    }
+  };
+  Logger.log(doPost(mockEvent).getContent());
+}
+
+function sanitizeCell_(val) {
+  if (val === undefined || val === null) return '';
+  if (typeof val === 'number' || typeof val === 'boolean') return val;
+  var str = typeof val === 'object' ? JSON.stringify(val) : String(val);
+  if (/^[=+\\-@]/.test(str)) {
+    return "'" + str;
   }
-  var body = JSON.parse(e.postData.contents);
-  var ss = SpreadsheetApp.openById(body.spreadsheetId || '${DEFAULT_BACKUP_SPREADSHEET_ID}');
-  var tabs = body.tabs || {};
-  Object.keys(tabs).forEach(function(tabName) {
-    var rows = tabs[tabName];
-    var sheet = ss.getSheetByName(tabName) || ss.insertSheet(tabName);
-    sheet.clearContents();
-    if (rows && rows.length > 0 && rows[0].length > 0) {
-      sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
-      sheet.setFrozenRows(1);
+  return str;
+}
+
+function normalizeRows_(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  var maxCols = 0;
+  for (var r = 0; r < rows.length; r++) {
+    if (Array.isArray(rows[r]) && rows[r].length > maxCols) {
+      maxCols = rows[r].length;
+    }
+  }
+  if (maxCols === 0) return [];
+  var normalized = [];
+  for (var i = 0; i < rows.length; i++) {
+    var src = Array.isArray(rows[i]) ? rows[i] : [rows[i]];
+    var out = [];
+    for (var c = 0; c < maxCols; c++) {
+      out.push(sanitizeCell_(c < src.length ? src[c] : ''));
+    }
+    normalized.push(out);
+  }
+  return normalized;
+}
+
+function objectsToSheetRows_(items, preferredKeys) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return preferredKeys && preferredKeys.length ? [preferredKeys] : [['No Records']];
+  }
+  var keys = [];
+  var seen = {};
+  if (Array.isArray(preferredKeys)) {
+    preferredKeys.forEach(function(k) {
+      if (!seen[k]) {
+        seen[k] = true;
+        keys.push(k);
+      }
+    });
+  }
+  items.forEach(function(item) {
+    if (item && typeof item === 'object') {
+      Object.keys(item).forEach(function(k) {
+        if (!seen[k]) {
+          seen[k] = true;
+          keys.push(k);
+        }
+      });
     }
   });
-  return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, spreadsheetTitle: ss.getName() }))
-    .setMimeType(ContentService.MimeType.JSON);
+  var rows = [keys];
+  items.forEach(function(item) {
+    rows.push(keys.map(function(k) {
+      return item && typeof item === 'object' ? sanitizeCell_(item[k]) : '';
+    }));
+  });
+  return rows;
+}
+
+function writeTabRows_(ss, tabName, rawRows) {
+  var rows = normalizeRows_(rawRows);
+  var sheet = ss.getSheetByName(tabName) || ss.insertSheet(tabName);
+  sheet.clearContents();
+  if (rows.length > 0) {
+    sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+    sheet.setFrozenRows(1);
+  }
+  return { tabName: tabName, action: 'replaced', rowCount: Math.max(0, rows.length - 1) };
+}
+
+function upsertOrAppendTypedData_(ss, rawType, rawData, mode) {
+  var key = String(rawType || '').trim().toLowerCase();
+  var cfg = TYPE_SHEET_CONFIG[key];
+  var sheetName = cfg ? cfg.sheetName : String(rawType || 'Data').trim();
+  var preferredCols = cfg ? cfg.columns : [];
+
+  var records = Array.isArray(rawData) ? rawData : (rawData && typeof rawData === 'object' ? [rawData] : []);
+  if (mode === 'replace') {
+    return writeTabRows_(ss, sheetName, objectsToSheetRows_(records, preferredCols));
+  }
+
+  var sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+  var existingValues = sheet.getDataRange().getValues();
+  var hasExistingHeader = existingValues.length > 0 && existingValues[0].some(function(cell) { return String(cell).trim() !== ''; });
+
+  if (!hasExistingHeader) {
+    return writeTabRows_(ss, sheetName, objectsToSheetRows_(records, preferredCols));
+  }
+
+  var headers = existingValues[0].map(function(h) { return String(h).trim(); });
+  records.forEach(function(rec) {
+    if (rec && typeof rec === 'object') {
+      Object.keys(rec).forEach(function(k) {
+        if (headers.indexOf(k) === -1) {
+          headers.push(k);
+        }
+      });
+    }
+  });
+  if (headers.length > existingValues[0].length) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  }
+  sheet.setFrozenRows(1);
+
+  var idColIdx = headers.indexOf('id');
+  var rowIndexById = {};
+  if (idColIdx !== -1 && mode !== 'append') {
+    for (var r = 1; r < existingValues.length; r++) {
+      var existingId = String(existingValues[r][idColIdx] || '').trim();
+      if (existingId) {
+        rowIndexById[existingId] = r + 1;
+      }
+    }
+  }
+
+  var updatedCount = 0;
+  var appendedRows = [];
+  records.forEach(function(rec) {
+    if (!rec || typeof rec !== 'object') return;
+    var row = headers.map(function(h) { return sanitizeCell_(rec[h]); });
+    var recId = idColIdx !== -1 && rec.id !== undefined && rec.id !== null ? String(rec.id).trim() : '';
+    if (recId && rowIndexById[recId]) {
+      sheet.getRange(rowIndexById[recId], 1, 1, headers.length).setValues([row]);
+      updatedCount++;
+    } else {
+      appendedRows.push(row);
+    }
+  });
+
+  if (appendedRows.length > 0) {
+    var startRow = Math.max(sheet.getLastRow() + 1, 2);
+    sheet.getRange(startRow, 1, appendedRows.length, headers.length).setValues(appendedRows);
+  }
+
+  return {
+    tabName: sheetName,
+    action: mode === 'append' ? 'appended' : 'upserted',
+    updatedCount: updatedCount,
+    appendedCount: appendedRows.length
+  };
+}
+
+function writeJsonSnapshotFallback_(ss, payloadObj) {
+  var jsonStr = JSON.stringify(payloadObj);
+  var maxCellChars = 45000;
+  var totalChunks = Math.max(1, Math.ceil(jsonStr.length / maxCellChars));
+  var exportedAt = new Date().toISOString();
+  var rows = [['Section', 'Chunk Index', 'Total Chunks', 'Exported At (ISO)', 'JSON Payload']];
+  for (var i = 0; i < totalChunks; i++) {
+    rows.push(['full_state_json', i + 1, totalChunks, exportedAt, jsonStr.slice(i * maxCellChars, (i + 1) * maxCellChars)]);
+  }
+  return writeTabRows_(ss, 'JSON_Snapshot', rows);
+}
+
+function doPost(e) {
+  var lock = LockService.getScriptLock();
+  try {
+    var rawContents = '';
+    if (e && e.postData && typeof e.postData.contents === 'string') {
+      rawContents = e.postData.contents;
+    } else if (e && e.parameter && (e.parameter.payload || e.parameter.data)) {
+      rawContents = e.parameter.payload || e.parameter.data;
+    }
+
+    if (!rawContents) {
+      return jsonResponse_({
+        ok: false,
+        error: 'Missing postData payload. Deploy as a Web App (Anyone) and send POST JSON, or run testAuthorization / testDoPostSample in the editor.'
+      });
+    }
+
+    var body = JSON.parse(rawContents);
+    if (!body || typeof body !== 'object') {
+      return jsonResponse_({ ok: false, error: 'Parsed JSON payload is empty or invalid.' });
+    }
+
+    lock.waitLock(15000);
+    var targetId = (body.spreadsheetId && String(body.spreadsheetId).trim()) || DEFAULT_SPREADSHEET_ID;
+    var ss = SpreadsheetApp.openById(targetId);
+    var updatedTabs = [];
+
+    if (body.type) {
+      var mode = String(body.mode || (body.replace ? 'replace' : 'upsert')).toLowerCase();
+      var payloadData = body.data !== undefined ? body.data : (body.records !== undefined ? body.records : (body.record !== undefined ? body.record : body.payload));
+      if (payloadData === undefined) {
+        return jsonResponse_({
+          ok: false,
+          error: 'Payload specified "type" (' + body.type + ') without a "data" or "records" field.'
+        });
+      }
+      updatedTabs.push(upsertOrAppendTypedData_(ss, body.type, payloadData, mode));
+    } else if (body.tabs && typeof body.tabs === 'object' && Object.keys(body.tabs).length > 0) {
+      Object.keys(body.tabs).forEach(function(tabName) {
+        updatedTabs.push(writeTabRows_(ss, tabName, body.tabs[tabName]));
+      });
+    } else {
+      var source = (body.collections && typeof body.collections === 'object') ? body.collections : body;
+      Object.keys(TYPE_SHEET_CONFIG).forEach(function(key) {
+        if (Array.isArray(source[key])) {
+          var cfg = TYPE_SHEET_CONFIG[key];
+          updatedTabs.push(writeTabRows_(ss, cfg.sheetName, objectsToSheetRows_(source[key], cfg.columns)));
+        }
+      });
+      updatedTabs.push(writeJsonSnapshotFallback_(ss, body));
+    }
+
+    SpreadsheetApp.flush();
+    return jsonResponse_({
+      ok: true,
+      spreadsheetId: ss.getId(),
+      spreadsheetTitle: ss.getName(),
+      updatedTabs: updatedTabs
+    });
+  } catch (err) {
+    return jsonResponse_({
+      ok: false,
+      error: err && err.message ? err.message : String(err)
+    });
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch (lockErr) {
+      // ignore if lock was not acquired
+    }
+  }
 }`;
+
+function buildAppsScriptJsonSnapshotRows(db: TourismDatabase, spreadsheetId: string): (string | number)[][] {
+  const maxCellChars = 45000;
+  const exportedAt = new Date().toISOString();
+  const safeSettings = {
+    ...db.settings,
+    userProfile: {
+      name: db.settings.userProfile.name,
+      email: db.settings.userProfile.email,
+      role: db.settings.userProfile.role,
+    },
+  };
+  const fullPayload = {
+    schemaVersion: '1.0.0',
+    exportedAt,
+    spreadsheetId,
+    agency: safeSettings,
+    collections: {
+      bookings: db.bookings,
+      customers: db.customers,
+      payments: db.payments,
+      expenses: db.expenses,
+      packages: db.packages,
+      staff: db.staff,
+      partners: db.partners,
+    },
+  };
+
+  const rows: (string | number)[][] = [
+    ['Section', 'Chunk Index', 'Total Chunks', 'Record Count', 'Exported At (ISO)', 'JSON Payload'],
+  ];
+
+  const appendSection = (name: string, count: number, value: unknown) => {
+    const json = JSON.stringify(value);
+    const totalChunks = Math.max(1, Math.ceil(json.length / maxCellChars));
+    for (let i = 0; i < totalChunks; i++) {
+      rows.push([name, i + 1, totalChunks, count, exportedAt, json.slice(i * maxCellChars, (i + 1) * maxCellChars)]);
+    }
+  };
+
+  appendSection('bookings', db.bookings.length, db.bookings);
+  appendSection('customers', db.customers.length, db.customers);
+  appendSection('payments', db.payments.length, db.payments);
+  appendSection('expenses', db.expenses.length, db.expenses);
+  appendSection('packages', db.packages.length, db.packages);
+  appendSection('staff', db.staff.length, db.staff);
+  appendSection('partners', db.partners.length, db.partners);
+  appendSection('full_state_json', 1, fullPayload);
+
+  return rows;
+}
 
 export async function backupViaAppsScriptWebhook(
   webhookUrl: string,
@@ -553,6 +876,10 @@ export async function backupViaAppsScriptWebhook(
   if (!cleanUrl.startsWith('https://script.google.com/')) {
     throw new Error('Please enter a valid Google Apps Script Web App URL (https://script.google.com/...).');
   }
+  if (cleanUrl.endsWith('/dev')) {
+    throw new Error('Please use the deployed Web App "/exec" URL (not the "/dev" test URL).');
+  }
+
   const cleanId = spreadsheetId.trim() || DEFAULT_BACKUP_SPREADSHEET_ID;
   const payloads = serializeTourismDatabase(db);
   const sanitizedTabs: Record<string, (string | number)[][]> = {};
@@ -564,25 +891,65 @@ export async function backupViaAppsScriptWebhook(
     totalCells += rows.reduce((sum, r) => sum + r.length, 0);
   }
 
-  // Use text/plain to avoid CORS preflight issues with Google Apps Script Web Apps
-  await fetch(cleanUrl, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({
-      spreadsheetId: cleanId,
-      tabs: sanitizedTabs,
-    }),
-  });
+  const jsonSnapshotRows = buildAppsScriptJsonSnapshotRows(db, cleanId);
+  sanitizedTabs['JSON_Snapshot'] = jsonSnapshotRows;
+  totalCells += jsonSnapshotRows.reduce((sum, r) => sum + r.length, 0);
 
-  const updatedTabs: BackupTabSummary[] = BACKUP_TABS.map((tab) => ({
-    tabName: tab,
-    rowCount: Math.max(0, payloads[tab].length - 1),
-  }));
+  let response: Response;
+  try {
+    // Use text/plain to send a CORS-simple POST without preflight while reading Apps Script's JSON response
+    response = await fetch(cleanUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        spreadsheetId: cleanId,
+        tabs: sanitizedTabs,
+      }),
+    });
+  } catch {
+    throw new Error(
+      'Unable to reach the Apps Script Web App. Ensure it is deployed with "Who has access: Anyone" using the /exec URL.'
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(`Apps Script Web App returned HTTP ${response.status}. Verify deployment access is set to "Anyone".`);
+  }
+
+  let parsedTitle = `Spreadsheet (${cleanId.slice(0, 10)}...)`;
+  try {
+    const resultJson = (await response.json()) as {
+      ok?: boolean;
+      error?: string;
+      spreadsheetTitle?: string;
+    };
+    if (resultJson && resultJson.ok === false) {
+      throw new Error(resultJson.error || 'Apps Script doPost returned an error.');
+    }
+    if (resultJson?.spreadsheetTitle) {
+      parsedTitle = resultJson.spreadsheetTitle;
+    }
+  } catch (err) {
+    if (err instanceof Error && !err.message.includes('JSON')) {
+      throw err;
+    }
+  }
+
+  const updatedTabs: BackupTabSummary[] = [
+    ...BACKUP_TABS.map((tab) => ({
+      tabName: tab,
+      rowCount: Math.max(0, payloads[tab].length - 1),
+    })),
+    {
+      tabName: 'JSON_Snapshot',
+      rowCount: Math.max(0, jsonSnapshotRows.length - 1),
+    },
+  ];
 
   return {
     spreadsheetId: cleanId,
-    spreadsheetTitle: `Spreadsheet (${cleanId.slice(0, 10)}...)`,
+    spreadsheetTitle: parsedTitle,
     spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${cleanId}`,
     updatedTabs,
     totalCellsWritten: totalCells,

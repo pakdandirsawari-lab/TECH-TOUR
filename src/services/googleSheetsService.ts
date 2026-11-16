@@ -2,6 +2,8 @@ import { TourismDatabase } from '../types/tourism';
 import {
   clearCachedToken,
   getAccessToken,
+  getAccessTokenSync,
+  GoogleAuthPopupError,
   googleLogout,
   googleSignIn,
   SCOPES as GOOGLE_SHEETS_SCOPES,
@@ -20,6 +22,7 @@ import {
 export {
   DEFAULT_BACKUP_SPREADSHEET_ID,
   GOOGLE_SHEETS_SCOPES,
+  GoogleAuthPopupError,
   SheetsAuthExpiredError,
 };
 export type { BackupResult, BackupTabSummary, SpreadsheetMetadata };
@@ -259,9 +262,11 @@ export function setGapiAccessToken(accessToken: string | null): void {
 /**
  * Authenticates the user directly with Google Identity Services (GIS) for the
  * Google Sheets API scope and attaches the resulting access token to `gapi.client`.
+ * Initiates `googleSignIn()` before any `await` to preserve browser user-gesture popup permission.
  */
 export async function authenticateWithGoogleSheets(): Promise<{ accessToken: string }> {
-  const result = await googleSignIn();
+  const signInPromise = googleSignIn();
+  const result = await signInPromise;
   try {
     await loadGapiClient();
     setGapiAccessToken(result.accessToken);
@@ -269,6 +274,13 @@ export async function authenticateWithGoogleSheets(): Promise<{ accessToken: str
     // gapi will still be initialized and token attached on first API call
   }
   return result;
+}
+
+/**
+ * Synchronously returns the active in-memory OAuth access token for the Google Sheets API, or null.
+ */
+export function getGoogleSheetsAccessTokenSync(): string | null {
+  return getAccessTokenSync();
 }
 
 /**
