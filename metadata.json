@@ -1,0 +1,6 @@
+{
+  "name": "Himalayan Horizons TMS",
+  "description": "Tourism Management System for Indian Travel Agencies — manage tour bookings, customers, packages, payments, expenses, staff, partners, and financial analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
