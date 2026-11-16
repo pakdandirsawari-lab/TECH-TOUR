@@ -373,6 +373,9 @@ export function GoogleSheetsBackupPanel() {
               <pre className="max-h-36 overflow-auto rounded-lg border border-slate-200 bg-slate-900 p-3 font-mono text-[11px] text-slate-100 dark:border-slate-700">
                 {APPS_SCRIPT_TEMPLATE}
               </pre>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Note: Do not click <strong>Run</strong> on <code className="font-mono">doPost</code> in the Apps Script editor (it has no HTTP <code className="font-mono">postData</code> there). Select <code className="font-mono">testAuthorization</code> if you want to authorize in the editor, then click <strong>Deploy → New deployment → Web app</strong> (Execute as: <em>Me</em>, Who has access: <em>Anyone</em>).
+              </p>
             </div>
           </div>
         )}

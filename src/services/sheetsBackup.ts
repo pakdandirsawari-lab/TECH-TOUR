@@ -507,7 +507,26 @@ export async function exportToGoogleSheets(
   return backupAllDataToSpreadsheet(spreadsheetId, token, db);
 }
 
-export const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
+export const APPS_SCRIPT_TEMPLATE = `function doGet() {
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true, message: 'Tourism backup webhook is active.' }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function testAuthorization() {
+  var ss = SpreadsheetApp.openById('${DEFAULT_BACKUP_SPREADSHEET_ID}');
+  Logger.log('Authorized access to: ' + ss.getName());
+}
+
+function doPost(e) {
+  if (!e || !e.postData || !e.postData.contents) {
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        ok: false,
+        error: 'Missing postData. Deploy as a Web App (Anyone) or run testAuthorization in the editor instead of Run on doPost.'
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
   var body = JSON.parse(e.postData.contents);
   var ss = SpreadsheetApp.openById(body.spreadsheetId || '${DEFAULT_BACKUP_SPREADSHEET_ID}');
   var tabs = body.tabs || {};
@@ -515,7 +534,7 @@ export const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
     var rows = tabs[tabName];
     var sheet = ss.getSheetByName(tabName) || ss.insertSheet(tabName);
     sheet.clearContents();
-    if (rows && rows.length > 0) {
+    if (rows && rows.length > 0 && rows[0].length > 0) {
       sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
       sheet.setFrozenRows(1);
     }
